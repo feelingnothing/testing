@@ -740,7 +740,7 @@ fn main() {
     //     println!("{:?}", (0..16).map(|z| sections[0].get(x + z * 16 + 1 * 256).unwrap()).collect::<Vec<_>>());
     // }
     //
-    let r = (0..256).into_par_iter().map(|_| {
+    let r = (0..64).into_par_iter().map(|_| {
         let s = Instant::now();
         let chunk = &ChunkData::from(&sections);
         s.elapsed()
