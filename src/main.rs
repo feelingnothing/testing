@@ -531,7 +531,9 @@ impl Into<u16> for Block {
 }
 
 type Section<T> = [T; 16 * 16 * 16];
+type Sections<T> = [Section<T>; 24];
 type RawSection = [Block; 16 * 16 * 16];
+type RawResctions = [RawSection; 24];
 
 const MINIMAL_NODE_SIZE: usize = 4;
 
@@ -608,17 +610,17 @@ struct ChunkData {
     pub nodes: Nodes,
 }
 
-impl From<&[[Block; 16 * 16 * 16]; 24]> for ChunkData {
-    fn from(raw: &[[Block; 16 * 16 * 16]; 24]) -> Self {
+impl From<&RawResctions> for ChunkData {
+    fn from(raw: &RawResctions) -> Self {
         let mut blocks = vec![];
         raw.iter().flatten().for_each(|b| if !blocks.contains(b) { blocks.push(*b) });
 
         fn convert<T: PaletteIndex>(raw: &[[Block; 16 * 16 * 16]; 24], blocks: &BiBTreeMap<T, Block>) -> Box<[Node<T>; 24]> {
-            let sections: [Section<T>; 24] = raw.into_par_iter().map(|f|
-                f.into_iter().map(|f| *blocks.get_by_right(&f).unwrap()).collect::<Vec<T>>().try_into().unwrap()
-            ).collect::<Vec<[T; 4096]>>().try_into().unwrap();
+            let ids: Box<[T]> = raw.iter().flatten().map(|f| *blocks.get_by_right(f).unwrap()).collect();
+            let sections: &Sections<T> = bytemuck::cast_ref(ids.as_ref());
 
-            sections.into_par_iter().map(Node::new).collect::<Vec<Node<T>>>().try_into().unwrap()
+            let nodes: Box<[Node<T>]> = sections.into_iter().map(|f| Node::new(f)).collect();
+            unsafe { std::mem::transmute::<_, Box<[Node<T>; 24]>>(nodes.as_ptr()) }
         }
 
         let nodes = if blocks.len() > u8::MAX as usize {
@@ -727,25 +729,23 @@ fn main() {
     while let Ok(v) = a.read_u16::<BigEndian>() {
         b.push(v);
     }
-    let a: Vec<Block> = unsafe { std::mem::transmute(b) };
+    let mut a: Vec<Block> = unsafe { std::mem::transmute(b) };
+    a.shrink_to_fit();
 
-    let chunk: [Block; 16 * 16 * 16 * 24] = <[Block; 16 * 16 * 16 * 24]>::try_from(a).unwrap();
-    let mut sections = vec![];
-    for s in chunk.chunks(16 * 16 * 16) {
-        sections.push(Section::try_from(s).unwrap())
-    }
-    let sections: [RawSection; 24] = <[RawSection; 24]>::try_from(sections).unwrap();
+    let sections = unsafe { std::mem::transmute::<_, Box<[RawSection; 24]>>(a.leak().as_ptr()) };
+
+    println!("{:?}", sections);
 
     // for x in (0..16).rev() {
     //     println!("{:?}", (0..16).map(|z| sections[0].get(x + z * 16 + 1 * 256).unwrap()).collect::<Vec<_>>());
     // }
     //
-    let r = (0..64).into_par_iter().map(|_| {
+    let r = (0..128).into_iter().map(|_| {
         let s = Instant::now();
-        let chunk = &ChunkData::from(&sections);
+        std::hint::black_box(ChunkData::from(sections.as_ref()));
         s.elapsed()
     }).collect::<Vec<_>>();
-    println!("{:?}", r.iter().map(|f| f.as_nanos()).sum::<u128>() / r.len() as u128);
+    println!("{:?}", r.iter().map(|f| f.as_secs_f64()).sum::<f64>() / r.len() as f64 * 1000.0);
 
     // let block = chunk.nodes[0].get(LocalBlockPosition::new(1, 1, 1));
     // println!("{:?}", block);

@@ -12,6 +12,7 @@ serde = { version = "1.0.151", features = ["derive"] }
 byteorder = "1.4.3"
 get-size = { version = "^0.1", features = ["derive"] }
 rayon = "1.6.1"
+bytemuck = { version = "1.12.3", features = ["derive"] }
 
 [profile.dev.package."*"]
 opt-level = 3
